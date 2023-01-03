@@ -2,6 +2,10 @@
 const mysql = require("mysql");
 const jwt = require("jsonwebtoken")
 const bcrypt = require("bcrypt")
+const ShortUniqueId = require('short-unique-id')
+const uid = new ShortUniqueId();
+const uidWithTimestamp = uid.stamp(36);
+
 
 const db = mysql.createConnection({
     host: "sql6.freesqldatabase.com",
@@ -42,7 +46,7 @@ let passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8
 const signUp = async function (req, res) {
     try {
         let data = req.body
-        let { name, email, mobile, password, passwordConfirm } = data
+        let { name, email, mobile, password } = data
 
         if (Object.keys(data).length == 0) return res.status(400).send({ status: false, msg: "Enter input field" })
 
@@ -67,11 +71,9 @@ const signUp = async function (req, res) {
                 for (let i in results) if (results[i].mobile == mobile) return res.send({ status: false, message: 'The Mobile is already exist!' })
             }
 
-            if (password != passwordConfirm) return res.send({ status: false, message: "Password don't match" });
-
             let hashedPassword = await bcrypt.hash(password, 10);
 
-            db.query(`INSERT INTO user SET ?`, {/*id : db.UUID(),*/ name: name, email: email, mobile: mobile, password: hashedPassword }, (err, results) => {
+            db.query(`INSERT INTO user SET ?`, { id: uidWithTimestamp, name: name, email: email, mobile: mobile, password: hashedPassword }, (err, results) => {
                 if (err) {
                     console.log(err);
                 } else {
@@ -94,23 +96,28 @@ const login = async function (req, res) {
         let data = req.body
         let { email, password } = data
 
-        if (!isEmpty(email)) return res.status(400).send({ status: false, msg: "Enter your Email" })
-        if (!emailRegex.test(email)) return res.status(400).send({ status: false, msg: "Enter valid Email ..!!" })
+        if (!isEmpty(email)) return res.status(400).send({ status: false, message: "Enter your Email" })
+        if (!emailRegex.test(email)) return res.status(400).send({ status: false, message: "Enter valid Email ..!!" })
 
-        if (!isEmpty(password)) return res.status(400).send({ status: false, msg: "Enter your password" })
-        if (!passwordRegex.test(password)) return res.status(400).send({ status: false, msg: "Enter valid password like Abc@123 ..!!" })
+        if (!isEmpty(password)) return res.status(400).send({ status: false, message: "Enter your password" })
+        if (!passwordRegex.test(password)) return res.status(400).send({ status: false, message: "Enter valid password like Abc@123 ..!!" })
 
 
         db.query(`SELECT * from user WHERE (email = "${email}")`, async (err, results) => {
 
+            if (err) { console.log(err) }
             // console.log(results);
+            if (results.length == 0) return res.status(400).send({ status: false, message: "You aren't registration user! You have you register first." })
+
             let pass = await bcrypt.compare(password, results[0].password)
             // console.log("a:", counter);
 
             if (counter >= MAX_ATTEMPS) {
+
                 setTimeout(() => { counter = 1 }, 10000/* * 60 * 60 * 24*/)
-                return res.status(400).send({ status: false, msg: "You are blocked for 24hrs!" })
+                return res.status(400).send({ status: false, message: "You are blocked for 24hrs!" })
             }
+
 
             if (!results || !pass) {
                 // console.log(counter);
@@ -125,7 +132,7 @@ const login = async function (req, res) {
                 const cookieOptions = { expires: new Date(Date.now() + 24 * 60 * 60 * 1000), httpOnly: true }
                 res.cookie('userSave', token, cookieOptions);
                 // res.status(200).redirect("/");
-                return res.status(200).send({ status: true, data: { token: token } })
+                return res.status(200).send({ status: true, data: { email: results[0].email, userId: results[0].id, token: token } })
             }
         })
 
